@@ -1,0 +1,7 @@
+﻿body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+.badge-verified { background: #DCFCE7; color: #166534; }
+.badge-pending { background: #FEF3C7; color: #92400E; }
+.badge-deal-active { background: #E0E7FF; color: #3730A3; }
+.badge-deal-complete { background: #DCFCE7; color: #166534; }

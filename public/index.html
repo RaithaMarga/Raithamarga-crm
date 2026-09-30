@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RaithaMarga CRM - Agri-Marketplace Command Center</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="crm.css">
+</head>
+<body class="text-slate-800 antialiased bg-slate-50 min-h-screen flex flex-col">
+  <!-- Top Header -->
+  <header class="bg-[#1B4332] text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center font-bold text-amber-400 text-xl shadow-inner">
+          🌾
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-extrabold text-xl tracking-tight text-white">RaithaMarga</span>
+            <span class="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-amber-500/30">ADMIN CRM</span>
+          </div>
+          <p class="text-xs text-emerald-200/80">Karnataka Farmer-Buyer Direct Trading Platform & APMC Command Center</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <div id="db-badge" class="flex items-center text-xs bg-emerald-900/60 px-3 py-1.5 rounded-lg border border-emerald-700/50 text-emerald-200">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span>
+          <span id="db-status-text">Cloud Firestore Connected</span>
+        </div>
+
+        <a href="http://localhost:5173" target="_blank" class="text-xs bg-white/10 hover:bg-white/20 text-white font-medium px-3 py-2 rounded-lg border border-white/20 transition flex items-center space-x-1.5">
+          <span>Marketplace Portal</span>
+          <span>&nearr;</span>
+        </a>
+
+        <button onclick="refreshData()" class="bg-amber-500 hover:bg-amber-600 text-slate-900 font-bold px-3.5 py-2 rounded-lg text-xs shadow-md transition flex items-center space-x-1">
+          <span>&#x21bb;</span>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-emerald-800/60 flex space-x-1 sm:space-x-3 overflow-x-auto text-sm font-medium">
+      <button onclick="switchTab('overview')" id="tab-overview" class="tab-btn py-3 px-3 border-b-2 border-amber-400 text-amber-300">
+        📊 Overview
+      </button>
+      <button onclick="switchTab('farmers')" id="tab-farmers" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        🌾 Farmers (<span id="badge-farmer-count">0</span>)
+      </button>
+      <button onclick="switchTab('buyers')" id="tab-buyers" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        🏢 Buyers (<span id="badge-buyer-count">0</span>)
+      </button>
+      <button onclick="switchTab('listings')" id="tab-listings" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        📦 Inventory (<span id="badge-listing-count">0</span>)
+      </button>
+      <button onclick="switchTab('requirements')" id="tab-requirements" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        📋 Buyer Demands (<span id="badge-requirement-count">0</span>)
+      </button>
+      <button onclick="switchTab('matches')" id="tab-matches" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        🎯 Matching Matrix (<span id="badge-match-count">0</span>)
+      </button>
+      <button onclick="switchTab('deals')" id="tab-deals" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        🤝 Deals Pipeline (<span id="badge-deal-count">0</span>)
+      </button>
+      <button onclick="switchTab('verifications')" id="tab-verifications" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        🛡️ Verification Desk (<span id="badge-verification-count">0</span>)
+      </button>
+      <button onclick="switchTab('proofs')" id="tab-proofs" class="tab-btn py-3 px-3 border-b-2 border-transparent text-emerald-100/70 hover:text-white">
+        ⚖️ Weighing Proofs (<span id="badge-proof-count">0</span>)
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    
+    <!-- TAB 1: OVERVIEW -->
+    <section id="view-overview" class="space-y-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase text-slate-500">Total Registered Farmers</p>
+            <h3 id="stat-farmers" class="text-3xl font-extrabold text-slate-900 mt-1">--</h3>
+            <p class="text-xs text-emerald-600 font-medium mt-1">Direct producers</p>
+          </div>
+          <div class="text-3xl">🌾</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase text-slate-500">Active Buyers</p>
+            <h3 id="stat-buyers" class="text-3xl font-extrabold text-slate-900 mt-1">--</h3>
+            <p class="text-xs text-blue-600 font-medium mt-1">Verified APMC & Retail</p>
+          </div>
+          <div class="text-3xl">🏢</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase text-slate-500">Active Inventory</p>
+            <h3 id="stat-listings-qty" class="text-3xl font-extrabold text-slate-900 mt-1">--</h3>
+            <p class="text-xs text-amber-600 font-medium mt-1"><span id="stat-listings-count">--</span> active lots</p>
+          </div>
+          <div class="text-3xl">📦</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase text-slate-500">Total Deals GMV</p>
+            <h3 id="stat-deals-gmv" class="text-3xl font-extrabold text-slate-900 mt-1">₹--</h3>
+            <p class="text-xs text-purple-600 font-medium mt-1"><span id="stat-deals-count">--</span> deals &bull; <span id="stat-completed-deals">0</span> completed</p>
+          </div>
+          <div class="text-3xl">🤝</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-lg text-slate-900">Recent Deals</h3>
+            <button onclick="switchTab('deals')" class="text-xs font-bold text-emerald-700 hover:underline">View All &rarr;</button>
+          </div>
+          <div id="overview-deals-list" class="space-y-3"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-bold text-lg text-slate-900">Recent Produce Listings</h3>
+            <button onclick="switchTab('listings')" class="text-xs font-bold text-emerald-700 hover:underline">View All &rarr;</button>
+          </div>
+          <div id="overview-listings-list" class="space-y-3"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: FARMERS -->
+    <section id="view-farmers" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Farmers Directory</h2>
+            <p class="text-xs text-slate-500">All registered farmers synced from Cloud Firestore</p>
+          </div>
+          <span class="bg-emerald-50 text-emerald-700 text-xs px-3 py-1 rounded-full font-bold border border-emerald-200">
+            Source: <code class="font-mono">farmer_profiles</code>
+          </span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+              <tr>
+                <th class="py-3 px-4">Farmer Name</th>
+                <th class="py-3 px-4">Mobile</th>
+                <th class="py-3 px-4">Location (Village/District)</th>
+                <th class="py-3 px-4">Holding / Crops</th>
+                <th class="py-3 px-4">Verification</th>
+                <th class="py-3 px-4 text-right">Quick Action</th>
+              </tr>
+            </thead>
+            <tbody id="farmers-table-body" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: BUYERS -->
+    <section id="view-buyers" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Buyers Directory</h2>
+            <p class="text-xs text-slate-500">Registered traders, food processors, and mandi commission agents</p>
+          </div>
+          <span class="bg-blue-50 text-blue-700 text-xs px-3 py-1 rounded-full font-bold border border-blue-200">
+            Source: <code class="font-mono">buyer_profiles</code>
+          </span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+              <tr>
+                <th class="py-3 px-4">Business Name</th>
+                <th class="py-3 px-4">Contact Person</th>
+                <th class="py-3 px-4">Type</th>
+                <th class="py-3 px-4">Location</th>
+                <th class="py-3 px-4">Status</th>
+              </tr>
+            </thead>
+            <tbody id="buyers-table-body" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: LISTINGS (INVENTORY) -->
+    <section id="view-listings" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Produce Inventory & Farm Lots</h2>
+            <p class="text-xs text-slate-500">Real-time crops posted by farmers directly or via APMC field agents</p>
+          </div>
+          <span class="bg-amber-50 text-amber-700 text-xs px-3 py-1 rounded-full font-bold border border-amber-200">
+            Source: <code class="font-mono">produce_listings</code>
+          </span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+              <tr>
+                <th class="py-3 px-4">Crop</th>
+                <th class="py-3 px-4">Lot Size</th>
+                <th class="py-3 px-4">Expected Price</th>
+                <th class="py-3 px-4">Grade</th>
+                <th class="py-3 px-4">Location</th>
+                <th class="py-3 px-4">Farmer</th>
+                <th class="py-3 px-4">Status</th>
+              </tr>
+            </thead>
+            <tbody id="listings-table-body" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 5: BUYER REQUIREMENTS -->
+    <section id="view-requirements" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Buyer Procurement Requirements</h2>
+            <p class="text-xs text-slate-500">Active purchase orders and lot demands posted by registered buyers</p>
+          </div>
+          <span class="bg-purple-50 text-purple-700 text-xs px-3 py-1 rounded-full font-bold border border-purple-200">
+            Source: <code class="font-mono">buyer_requirements</code>
+          </span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 text-slate-500 uppercase text-xs">
+              <tr>
+                <th class="py-3 px-4">Requested Crop</th>
+                <th class="py-3 px-4">Required Volume</th>
+                <th class="py-3 px-4">Target Budget</th>
+                <th class="py-3 px-4">Quality Grade</th>
+                <th class="py-3 px-4">Destination Mandi</th>
+                <th class="py-3 px-4">Buyer Entity</th>
+                <th class="py-3 px-4">Needed By</th>
+              </tr>
+            </thead>
+            <tbody id="requirements-table-body" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 6: MATCHES -->
+    <section id="view-matches" class="hidden space-y-6">
+      <div class="bg-gradient-to-r from-emerald-900 to-emerald-800 text-white p-6 rounded-2xl shadow-sm">
+        <h2 class="text-2xl font-bold">Deterministic Matching Matrix (Prompt 4)</h2>
+        <p class="text-sm text-emerald-200 mt-1">
+          100-Point Rule-Based Scoring: Crop variety (35 pts) + Volume fit (25 pts) + District proximity (20 pts) + Price alignment (20 pts).
+        </p>
+      </div>
+      <div id="matches-container" class="space-y-4"></div>
+    </section>
+
+    <!-- TAB 7: DEALS PIPELINE -->
+    <section id="view-deals" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Deals Pipeline & State Machine (Prompt 5)</h2>
+            <p class="text-xs text-slate-500">Unidirectional flow: Listed &rarr; Buyer Interested &rarr; Confirmed &rarr; Proof Added &rarr; Pickup &rarr; Completed</p>
+          </div>
+          <span class="bg-emerald-50 text-emerald-700 text-xs px-3 py-1 rounded-full font-bold border border-emerald-200">
+            Source: <code class="font-mono">deals</code>
+          </span>
+        </div>
+        <div id="deals-pipeline-list" class="space-y-4"></div>
+      </div>
+    </section>
+
+    <!-- TAB 8: VERIFICATION DESK -->
+    <section id="view-verifications" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Farmer Verification Desk (Prompt 6)</h2>
+            <p class="text-xs text-slate-500">APMC administrative review of Land Records (RTC / 7-12), Government IDs, and Bank Passbooks</p>
+          </div>
+          <span class="bg-amber-50 text-amber-700 text-xs px-3 py-1 rounded-full font-bold border border-amber-200">
+            Source: <code class="font-mono">verifications</code>
+          </span>
+        </div>
+        <div id="verifications-list" class="space-y-4"></div>
+      </div>
+    </section>
+
+    <!-- TAB 9: WEIGHING PROOFS -->
+    <section id="view-proofs" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">Weighing Proofs & Quality Certificates (Prompt 6)</h2>
+            <p class="text-xs text-slate-500">APMC Digital Weighbridge certified tickets, tare/gross weights, and slip receipts</p>
+          </div>
+          <span class="bg-indigo-50 text-indigo-700 text-xs px-3 py-1 rounded-full font-bold border border-indigo-200">
+            Source: <code class="font-mono">proofs</code>
+          </span>
+        </div>
+        <div id="proofs-list" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="bg-white border-t border-slate-200 py-4 text-xs text-slate-500 text-center">
+    RaithaMarga CRM &bull; Running on Port 5000 &bull; Synced with Firebase Cloud Firestore (<code class="font-mono">website-2d57a</code>)
+  </footer>
+
+  <script src="crm.js"></script>
+</body>
+</html>
