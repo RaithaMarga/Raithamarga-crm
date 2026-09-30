@@ -35,12 +35,18 @@ app.get('*', (req, res, next) => {
 
 await verifyFirestoreAccess();
 
-app.listen(PORT, () => {
-  console.log('=====================================================');
-  console.log('🌾 RaithaMarga CRM & Backend Server running!');
-  console.log(`🌐 Server URL: http://localhost:${PORT}`);
-  console.log(`📊 CRM Dashboard: http://localhost:${PORT}`);
-  console.log(`🔌 REST API Base: http://localhost:${PORT}/api`);
-  console.log('💾 Database Status:', JSON.stringify(getDbStatus()));
-  console.log('=====================================================');
-});
+// On Vercel the app is exported and run as a serverless function;
+// locally (or on any normal host) we start a regular HTTP server.
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log('=====================================================');
+    console.log('🌾 RaithaMarga CRM & Backend Server running!');
+    console.log(`🌐 Server URL: http://localhost:${PORT}`);
+    console.log(`📊 CRM Dashboard: http://localhost:${PORT}`);
+    console.log(`🔌 REST API Base: http://localhost:${PORT}/api`);
+    console.log('💾 Database Status:', JSON.stringify(getDbStatus()));
+    console.log('=====================================================');
+  });
+}
+
+export default app;

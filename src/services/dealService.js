@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Deal Lifecycle Service for RaithaMarga (Prompt 5 & 6)
  * Strict state transitions:
  * listed -> buyer_interested -> deal_confirmed -> weighed_proof_added -> pickup_delivery -> completed (or cancelled)

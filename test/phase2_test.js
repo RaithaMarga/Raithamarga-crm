@@ -1,4 +1,4 @@
-﻿import http from 'http';
+import http from 'http';
 
 function makeRequest(method, path, body = null, token = null) {
   return new Promise((resolve, reject) => {
