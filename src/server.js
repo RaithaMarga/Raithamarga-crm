@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import apiRouter from './routes/api.js';
-import { getDbStatus, verifyFirestoreAccess } from './config/firebase.js';
+import { getDbStatus, verifyFirestoreAccess, refreshFromFirestore } from './config/firebase.js';
 
 // Express 4 does not catch rejected promises from async route handlers.
 // Without these guards a single failed Firestore call would kill the whole
@@ -35,6 +35,13 @@ app.use(express.static(path.join(__dirname, '../public')));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // Mount API routes
+// Keep the API's working copy in sync with Firestore (throttled).
+app.use('/api', async (req, res, next) => {
+  if (req.path !== '/health') {
+    try { await refreshFromFirestore(); } catch (err) { console.error('[refresh]', err.message); }
+  }
+  next();
+});
 app.use('/api', apiRouter);
 
 // Fallback to CRM UI for SPA routing

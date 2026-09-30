@@ -181,14 +181,47 @@ export { firestoreDb };
 let firestoreReady = false;
 let lastError = null;
 
-// On serverless hosts /tmp is empty on every cold start, so rebuild the
-// in-memory/local store from Firestore (the source of truth).
-async function hydrateLocalStoreFromFirestore() {
-  for (const name of Object.keys(INITIAL_DATA).concat(['matches'])) {
-    const snap = await firestoreDb.collection(name).get();
-    localStore.data[name] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-  }
+// Firestore is the source of truth. The API reads from an in-memory copy
+// (localStore), so we refresh that copy from Firestore:
+//  - on cold start (serverless /tmp is empty), and
+//  - before API requests (throttled), so data written by other instances or
+//    directly by the marketplace frontend shows up in the CRM.
+const REFRESH_TTL_MS = Number(process.env.FIRESTORE_REFRESH_TTL_MS || 4000);
+let lastRefreshAt = 0;
+let refreshInFlight = null;
+let pendingWrites = 0;
+
+async function loadAllCollections() {
+  const names = Array.from(new Set([...Object.keys(INITIAL_DATA), 'matches']));
+  const results = await Promise.all(
+    names.map(async (name) => {
+      const snap = await firestoreDb.collection(name).get();
+      return [name, snap.docs.map((d) => ({ id: d.id, ...d.data() }))];
+    })
+  );
+  for (const [name, docs] of results) localStore.data[name] = docs;
   localStore.save();
+  lastRefreshAt = Date.now();
+}
+
+export async function refreshFromFirestore({ force = false } = {}) {
+  if (!firestoreDb || initError) return false;
+  if (!force && Date.now() - lastRefreshAt < REFRESH_TTL_MS) return false;
+  if (pendingWrites > 0) return false; // don't clobber in-flight local writes
+  if (!refreshInFlight) {
+    refreshInFlight = loadAllCollections()
+      .catch((err) => {
+        lastError = `Firestore refresh failed: ${err.message}`;
+        console.error('[Firestore refresh]', err.message);
+      })
+      .finally(() => { refreshInFlight = null; });
+  }
+  await refreshInFlight;
+  return true;
+}
+
+async function hydrateLocalStoreFromFirestore() {
+  await loadAllCollections();
 }
 
 export async function verifyFirestoreAccess() {
@@ -211,6 +244,7 @@ export async function verifyFirestoreAccess() {
 
 export async function syncDocToFirestore(collectionName, docId, data) {
   if (!firestoreDb) throw new Error(initError || 'Firestore is not initialised.');
+  pendingWrites++;
   try {
     const localRecord = (localStore.data[collectionName] || []).find(record => record.id === docId || record.userId === docId);
     const payload = localRecord ? { ...localRecord, ...data } : data;
@@ -219,17 +253,22 @@ export async function syncDocToFirestore(collectionName, docId, data) {
   } catch (error) {
     lastError = `Firestore write failed for ${collectionName}.`;
     throw new Error(lastError, { cause: error });
+  } finally {
+    pendingWrites--;
   }
 }
 
 export async function deleteDocFromFirestore(collectionName, docId) {
   if (!firestoreDb) throw new Error(initError || 'Firestore is not initialised.');
+  pendingWrites++;
   try {
     await firestoreDb.collection(collectionName).doc(String(docId)).delete();
     lastError = null;
   } catch (error) {
     lastError = `Firestore delete failed for ${collectionName}.`;
     throw new Error(lastError, { cause: error });
+  } finally {
+    pendingWrites--;
   }
 }
 
