@@ -27,7 +27,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '4mb' })); // Vercel's hard request limit is 4.5 MB
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static CRM web dashboard
