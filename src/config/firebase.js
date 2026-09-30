@@ -119,7 +119,13 @@ function loadServiceAccountFromEnv() {
   const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
   if (rawJson) {
     const text = rawJson.startsWith('{') ? rawJson : Buffer.from(rawJson, 'base64').toString('utf8');
-    const account = JSON.parse(text);
+    let account;
+    try {
+      account = JSON.parse(text);
+    } catch {
+      // Tolerate JSON pasted with real line breaks inside strings
+      account = JSON.parse(text.replace(/\r?\n/g, '\\n'));
+    }
     if (account.private_key) account.private_key = account.private_key.replace(/\\n/g, '\n');
     return account;
   }
@@ -140,25 +146,38 @@ function assertValidAccount(account, source) {
   }
 }
 
-let credential;
 let projectId = configuredProject;
-const envAccount = loadServiceAccountFromEnv();
-if (envAccount) {
-  assertValidAccount(envAccount, 'Firebase service-account environment variables');
-  projectId = envAccount.project_id;
-  credential = cert(envAccount);
-} else if (credentialPath) {
-  const resolvedPath = path.resolve(path.dirname(LOCAL_DB_FILE), '..', credentialPath);
-  const account = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
-  assertValidAccount(account, 'FIREBASE_SERVICE_ACCOUNT_PATH');
-  projectId = account.project_id;
-  credential = cert(account);
-} else {
-  credential = applicationDefault();
+let initError = null;
+let firestoreDb = null;
+
+// Never throw while the module loads: on serverless hosts that turns into an
+// opaque 500 FUNCTION_INVOCATION_FAILED. Record the problem and expose it via
+// /api/health instead.
+try {
+  let credential;
+  const envAccount = loadServiceAccountFromEnv();
+  if (envAccount) {
+    assertValidAccount(envAccount, 'Firebase service-account environment variables');
+    projectId = envAccount.project_id;
+    credential = cert(envAccount);
+  } else if (credentialPath) {
+    const resolvedPath = path.resolve(path.dirname(LOCAL_DB_FILE), '..', credentialPath);
+    const account = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+    assertValidAccount(account, 'FIREBASE_SERVICE_ACCOUNT_PATH');
+    projectId = account.project_id;
+    credential = cert(account);
+  } else {
+    credential = applicationDefault();
+  }
+  if (!projectId) throw new Error('Set FIREBASE_PROJECT_ID for the backend.');
+  const adminApp = initializeApp({ credential, projectId }, 'RaithaMargaBackend');
+  firestoreDb = getFirestore(adminApp);
+} catch (error) {
+  initError = `Firebase initialisation failed: ${error.message}`;
+  console.error('[Firebase]', initError);
+  if (!IS_VERCEL) throw error;
 }
-if (!projectId) throw new Error('Set FIREBASE_PROJECT_ID for the backend.');
-const adminApp = initializeApp({ credential, projectId }, 'RaithaMargaBackend');
-export const firestoreDb = getFirestore(adminApp);
+export { firestoreDb };
 let firestoreReady = false;
 let lastError = null;
 
@@ -173,6 +192,11 @@ async function hydrateLocalStoreFromFirestore() {
 }
 
 export async function verifyFirestoreAccess() {
+  if (initError) {
+    firestoreReady = false;
+    lastError = initError;
+    throw new Error(initError);
+  }
   try {
     await firestoreDb.collection('users').limit(1).get();
     firestoreReady = true;
@@ -180,12 +204,13 @@ export async function verifyFirestoreAccess() {
     if (IS_VERCEL) await hydrateLocalStoreFromFirestore();
   } catch (error) {
     firestoreReady = false;
-    lastError = 'Authenticated Firestore access failed. Check server credentials and IAM permissions.';
+    lastError = `Authenticated Firestore access failed: ${error.message}`;
     throw new Error(lastError, { cause: error });
   }
 }
 
 export async function syncDocToFirestore(collectionName, docId, data) {
+  if (!firestoreDb) throw new Error(initError || 'Firestore is not initialised.');
   try {
     const localRecord = (localStore.data[collectionName] || []).find(record => record.id === docId || record.userId === docId);
     const payload = localRecord ? { ...localRecord, ...data } : data;
@@ -198,6 +223,7 @@ export async function syncDocToFirestore(collectionName, docId, data) {
 }
 
 export async function deleteDocFromFirestore(collectionName, docId) {
+  if (!firestoreDb) throw new Error(initError || 'Firestore is not initialised.');
   try {
     await firestoreDb.collection(collectionName).doc(String(docId)).delete();
     lastError = null;

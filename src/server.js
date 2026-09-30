@@ -5,6 +5,16 @@ import { fileURLToPath } from 'url';
 import apiRouter from './routes/api.js';
 import { getDbStatus, verifyFirestoreAccess } from './config/firebase.js';
 
+// Express 4 does not catch rejected promises from async route handlers.
+// Without these guards a single failed Firestore call would kill the whole
+// serverless function (500 FUNCTION_INVOCATION_FAILED) instead of one request.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason?.message || reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err?.message || err);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -30,7 +40,17 @@ app.use('/api', apiRouter);
 // Fallback to CRM UI for SPA routing
 app.get('*', (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
-  res.sendFile(path.join(__dirname, '../public/index.html'));
+  res.sendFile(path.join(__dirname, '../public/index.html'), (err) => {
+    if (err && !res.headersSent) res.status(404).send('CRM dashboard files not found');
+  });
+});
+
+// Final error handler: turn thrown errors into JSON instead of crashing.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[Express error]', err?.message || err);
+  if (res.headersSent) return;
+  res.status(err?.status || 500).json({ error: err?.message || 'Internal server error' });
 });
 
 try {
