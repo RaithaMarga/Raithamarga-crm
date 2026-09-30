@@ -9,11 +9,17 @@ dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DATA_DIR = path.resolve(__dirname, '../../data');
+const IS_VERCEL = Boolean(process.env.VERCEL);
+// Vercel's filesystem is read-only except /tmp (which is ephemeral per instance).
+const DATA_DIR = IS_VERCEL ? '/tmp/raithamarga-data' : path.resolve(__dirname, '../../data');
 const LOCAL_DB_FILE = path.join(DATA_DIR, 'db.json');
 
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('[DB] Could not create data directory:', err.message);
 }
 
 // Clean helper for env vars that may contain quotes or trailing commas
@@ -103,17 +109,48 @@ export const localStore = new LocalStore(LOCAL_DB_FILE);
 
 const credentialPath = cleanEnv(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
 const configuredProject = cleanEnv(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID);
-let credential;
-let projectId = configuredProject;
-if (credentialPath) {
-  const resolvedPath = path.resolve(path.dirname(LOCAL_DB_FILE), '..', credentialPath);
-  const account = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+
+// Service-account credentials can come from (in priority order):
+//  1. FIREBASE_SERVICE_ACCOUNT_JSON  - full JSON (raw or base64) - best for Vercel
+//  2. FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY
+//  3. FIREBASE_SERVICE_ACCOUNT_PATH  - path to a JSON file - local development
+//  4. Application Default Credentials
+function loadServiceAccountFromEnv() {
+  const rawJson = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
+  if (rawJson) {
+    const text = rawJson.startsWith('{') ? rawJson : Buffer.from(rawJson, 'base64').toString('utf8');
+    const account = JSON.parse(text);
+    if (account.private_key) account.private_key = account.private_key.replace(/\\n/g, '\n');
+    return account;
+  }
+  const email = cleanEnv(process.env.FIREBASE_CLIENT_EMAIL);
+  const key = (process.env.FIREBASE_PRIVATE_KEY || '').trim().replace(/^["']|["']$/g, '').replace(/\\n/g, '\n');
+  if (email && key && configuredProject) {
+    return { type: 'service_account', project_id: configuredProject, client_email: email, private_key: key };
+  }
+  return null;
+}
+
+function assertValidAccount(account, source) {
   if (account.type !== 'service_account' || !account.project_id || !account.client_email || !account.private_key) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT_PATH must point to a valid service-account JSON file.');
+    throw new Error(`${source} must contain a valid service-account (type, project_id, client_email, private_key).`);
   }
   if (configuredProject && configuredProject !== account.project_id) {
     throw new Error('Firebase service-account project does not match FIREBASE_PROJECT_ID.');
   }
+}
+
+let credential;
+let projectId = configuredProject;
+const envAccount = loadServiceAccountFromEnv();
+if (envAccount) {
+  assertValidAccount(envAccount, 'Firebase service-account environment variables');
+  projectId = envAccount.project_id;
+  credential = cert(envAccount);
+} else if (credentialPath) {
+  const resolvedPath = path.resolve(path.dirname(LOCAL_DB_FILE), '..', credentialPath);
+  const account = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+  assertValidAccount(account, 'FIREBASE_SERVICE_ACCOUNT_PATH');
   projectId = account.project_id;
   credential = cert(account);
 } else {
@@ -125,11 +162,22 @@ export const firestoreDb = getFirestore(adminApp);
 let firestoreReady = false;
 let lastError = null;
 
+// On serverless hosts /tmp is empty on every cold start, so rebuild the
+// in-memory/local store from Firestore (the source of truth).
+async function hydrateLocalStoreFromFirestore() {
+  for (const name of Object.keys(INITIAL_DATA).concat(['matches'])) {
+    const snap = await firestoreDb.collection(name).get();
+    localStore.data[name] = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  }
+  localStore.save();
+}
+
 export async function verifyFirestoreAccess() {
   try {
     await firestoreDb.collection('users').limit(1).get();
     firestoreReady = true;
     lastError = null;
+    if (IS_VERCEL) await hydrateLocalStoreFromFirestore();
   } catch (error) {
     firestoreReady = false;
     lastError = 'Authenticated Firestore access failed. Check server credentials and IAM permissions.';

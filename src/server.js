@@ -33,7 +33,14 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-await verifyFirestoreAccess();
+try {
+  await verifyFirestoreAccess();
+} catch (err) {
+  // Locally, fail fast. On Vercel, keep the function alive so the UI and
+  // /api health info still load and the real error is visible in the logs.
+  console.error('[Startup] Firestore check failed:', err.message, err.cause?.message || '');
+  if (!process.env.VERCEL) throw err;
+}
 
 // On Vercel the app is exported and run as a serverless function;
 // locally (or on any normal host) we start a regular HTTP server.
